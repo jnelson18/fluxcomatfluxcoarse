@@ -1,0 +1,22 @@
+[workspace]
+channels = ["conda-forge"]
+name = "FLUXtrapolation"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+matplotlib = "*"
+numpy = "*"
+pandas = "*"
+scikit-learn = ">=1.5.2"
+seaborn = "*"
+pytorch = "*"
+tqdm = "*"
+xgboost = "*"
+ipykernel = ">=7.3.0,<8"
+requests = ">=2.34.2,<3"
+pip = ">=26.1.2,<27"
+xarray = ">=2026.4.0,<2027"
+jupyterlab = ">=4.5.8,<5"
