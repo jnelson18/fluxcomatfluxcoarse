@@ -1,12 +1,8 @@
 # fluxcomatfluxcoarse
 
-Overview of the FLUXCOM Exercise for FLUXCOARSE
+Overview of the FLUXCOM Exercise for FLUXCOARSE, where we will train and evaluate machine learning models using FLUXNET data based on the FLUXCOM-X workflow.
 
-This exercise is based on work by Anya Fries:
-
-- <https://github.com/anyafries/FLUXtrapolation>
-- <https://arxiv.org/abs/2605.19812>
-
+This work is based on a great study by Anya Fries on developing a benchmark for evaluating the extrapolation from FLUXNET data ([FLUXtrapolation](https://github.com/anyafries/FLUXtrapolation)). If you are interest, feel free to read the [preprint](https://arxiv.org/abs/2605.19812).
 
 # Setup and Installation
 
