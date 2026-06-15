@@ -1,0 +1,153 @@
+"""
+Shared PyTorch utilities for neural network models.
+"""
+
+import numpy as np
+import torch
+from torch.utils.data import Dataset
+
+
+class FluxnetDataset(Dataset):
+    """PyTorch Dataset that includes environment/group indices."""
+
+    def __init__(self, X, y, env_indices):
+        """
+        Args:
+            X: Features array of shape (n_samples, n_features)
+            y: Target array of shape (n_samples,)
+            env_indices: Integer environment indices of shape (n_samples,)
+        """
+        assert isinstance(X, torch.Tensor), "X must be a torch.Tensor"
+        assert isinstance(y, torch.Tensor), "y must be a torch.Tensor"
+        self.X = X
+        self.y = y
+        self.envs = torch.tensor(env_indices, dtype=torch.long)
+
+    def __len__(self):
+        return len(self.y)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx], self.envs[idx]
+
+
+# class StratifiedBatchSampler:
+#     """
+#     Batch sampler that ensures each batch has samples from multiple groups.
+
+#     Shuffles within each group, then interleaves samples across groups
+#     to create batches with good group coverage.
+#     """
+
+#     def __init__(self, env_indices, batch_size, drop_last=False):
+#         """
+#         Args:
+#             env_indices: Array of integer environment indices
+#             batch_size: Number of samples per batch
+#             drop_last: Whether to drop the last incomplete batch
+#         """
+#         self.env_indices = np.array(env_indices)
+#         self.batch_size = batch_size
+#         self.drop_last = drop_last
+
+#         # Group sample indices by environment
+#         self.group_indices = {}
+#         for i, g in enumerate(env_indices):
+#             self.group_indices.setdefault(g, []).append(i)
+
+#         self.n_groups = len(self.group_indices)
+
+#     def __iter__(self):
+#         # Shuffle indices within each group
+#         shuffled_groups = {}
+#         for g, indices in self.group_indices.items():
+#             shuffled_groups[g] = np.random.permutation(indices).tolist()
+
+#         # Interleave: cycle through groups, taking one sample at a time
+#         all_indices = []
+#         groups = list(shuffled_groups.keys())
+#         group_ptrs = {g: 0 for g in groups}
+
+#         # Continue until all groups are exhausted
+#         while True:
+#             added_any = False
+#             for g in groups:
+#                 if group_ptrs[g] < len(shuffled_groups[g]):
+#                     all_indices.append(shuffled_groups[g][group_ptrs[g]])
+#                     group_ptrs[g] += 1
+#                     added_any = True
+#             if not added_any:
+#                 break
+
+#         # Create batches
+#         n_samples = len(all_indices)
+#         for start in range(0, n_samples, self.batch_size):
+#             end = min(start + self.batch_size, n_samples)
+#             if self.drop_last and (end - start) < self.batch_size:
+#                 break
+#             yield all_indices[start:end]
+
+#     def __len__(self):
+#         n_samples = len(self.env_indices)
+#         if self.drop_last:
+#             return n_samples // self.batch_size
+#         return (n_samples + self.batch_size - 1) // self.batch_size
+
+class ProportionateBatchSampler:
+    """
+    Batch sampler that maintains the original dataset proportions 
+    of each environment in every batch.
+    """
+
+    def __init__(self, env_indices, batch_size, drop_last=True, seed=42):
+        self.env_indices = np.array(env_indices)
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        self._rng = np.random.default_rng(seed)
+
+        # 1. Group indices by environment
+        self.group_indices = {}
+        for i, g in enumerate(self.env_indices):
+            self.group_indices.setdefault(g, []).append(i)
+        
+        self.groups = list(self.group_indices.keys())
+        total_samples = len(self.env_indices)
+
+        # 2. Calculate the "samples per batch" for each group based on proportion
+        self.group_probs = {g: len(indices) / total_samples for g, indices in self.group_indices.items()}
+        
+        # Calculate how many samples of each group go into one batch
+        self.samples_per_batch = {
+            g: max(1, int(round(prob * batch_size))) 
+            for g, prob in self.group_probs.items()
+        }
+
+    def __iter__(self):
+        # Shuffle indices within each group at the start of the epoch
+        shuffled_groups = {g: self._rng.permutation(indices).tolist()
+                           for g, indices in self.group_indices.items()}
+        
+        # Determine how many full batches we can make before the first group runs out
+        # (Since we aren't oversampling, the "bottleneck" group dictates the epoch length)
+        batches_possible = []
+        for g in self.groups:
+            batches_possible.append(len(shuffled_groups[g]) // self.samples_per_batch[g])
+        
+        n_batches = min(batches_possible)
+
+        for _ in range(n_batches):
+            batch = []
+            for g in self.groups:
+                num_to_take = self.samples_per_batch[g]
+                # Pop the required number of samples for this group
+                for _ in range(num_to_take):
+                    batch.append(shuffled_groups[g].pop(0))
+            
+            # Final shuffle of the batch so the model doesn't see [AAAAABBC] order
+            self._rng.shuffle(batch)
+            yield batch
+
+    def __len__(self):
+        batches_possible = []
+        for g in self.groups:
+            batches_possible.append(len(self.group_indices[g]) // self.samples_per_batch[g])
+        return min(batches_possible)
